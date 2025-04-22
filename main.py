@@ -6,6 +6,12 @@ from datetime import datetime, timedelta
 import time
 import re
 
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+
 # === CONFIGURATION TELEGRAM ===
 TOKEN = "7737434764:AAHHSIa36lp3ysRqyrQheA4E3DdnChrT0T8"
 CHAT_ID = "5355749395"
@@ -36,30 +42,45 @@ def is_recent(posted_date_text):
         return True
     return False
 
-# === SCRAPING INDEED ===
+# === SCRAPING INDEED AVEC SELENIUM ===
 def scrape_indeed():
-    print("Scraping Indeed...")
+    print("Scraping Indeed avec Selenium...")
+
     urls = [
         "https://fr.indeed.com/jobs?q=d%C3%A9veloppeur+web+front-end+alternance&sort=date",
         "https://fr.indeed.com/jobs?q=integrateur+web+alternance&sort=date"
     ]
-    headers = {"User-Agent": "Mozilla/5.0"}
+
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
 
     for url in urls:
         try:
-            response = requests.get(url, headers=headers)
-            soup = BeautifulSoup(response.text, "html.parser")
-            jobs = soup.find_all("a", class_="tapItem")
+            driver.get(url)
+            time.sleep(2)
+            jobs = driver.find_elements(By.CLASS_NAME, "tapItem")
+            count = 0
 
             for job in jobs[:10]:
-                title = job.find("h2").text.strip()
-                link = "https://fr.indeed.com" + job.get("href")
-                date_elem = job.find("span", class_="date")
-                if date_elem and is_recent(date_elem.text):
-                    send_telegram_message(f"<b>{title}</b>\n{link}")
+                try:
+                    title = job.find_element(By.TAG_NAME, "h2").text.strip()
+                    link = job.get_attribute("href")
+                    date_elem = job.find_element(By.CLASS_NAME, "date").text.strip()
+                    if is_recent(date_elem):
+                        send_telegram_message(f"<b>{title}</b>\n{link}")
+                        count += 1
+                except Exception as e:
+                    continue
 
+            print(f"Indeed : {count} annonces envoyées pour {url}")
         except Exception as e:
             send_telegram_message(f"Erreur Indeed : {e}")
+
+    driver.quit()
 
 # === SCRAPING WTTJ ===
 def scrape_wttj():
